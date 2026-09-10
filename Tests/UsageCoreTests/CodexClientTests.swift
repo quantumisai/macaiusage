@@ -108,6 +108,65 @@ struct CodexClientTests {
         #expect(try server.methods() == ["initialize", "initialized", "account/login/start"])
     }
 
+    @Test(arguments: [false, true])
+    func launchesEnvShebangFromLoginEnvironmentAndReconnects(signInFirst: Bool) async throws {
+        let server = try FixtureServer(mode: "minimalEnvironment", usesEnvInterpreter: true)
+        defer { server.remove() }
+        let client = CodexClient(
+            executablePath: server.executable.path,
+            requestTimeout: .seconds(3),
+            environment: [
+                "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+                "HOME": "/test-only/home with spaces",
+                "CODEX_HOME": "/test-only/custom codex home",
+                "OPENAI_API_KEY": "fixture-only-value",
+            ]
+        )
+        defer { client.stop() }
+
+        if signInFirst {
+            #expect(try await client.startSignIn().absoluteString == "https://auth.openai.com/test-only")
+        } else {
+            #expect(try await client.fetchUsage().windows.first?.remainingPercent == 51)
+        }
+        client.stop()
+        #expect(try await client.fetchUsage().planName == "Pro")
+
+        let methods = try server.methods()
+        #expect(methods.filter { $0 == "initialize" }.count == 2)
+        #expect(methods.filter { $0 == "account/login/start" }.count == (signInFirst ? 1 : 0))
+    }
+
+    @Test func childPathPreservesInterpreterPreferenceAndAuthenticationEnvironment() {
+        let inherited = [
+            "PATH": "/preferred node/bin:/usr/bin::relative/bin:/usr/bin:/usr/local/bin",
+            "HOME": "/custom home",
+            "CODEX_HOME": "/custom codex home",
+            "OPENAI_API_KEY": "fixture-only-value",
+            "OTHER_SETTING": "unchanged",
+        ]
+        let environment = CodexClient.subprocessEnvironment(
+            executable: URL(fileURLWithPath: "/chosen bin/codex"),
+            inherited: inherited,
+            homeDirectory: URL(fileURLWithPath: "/custom home")
+        )
+        #expect(environment["PATH"]?.split(separator: ":").map(String.init) == [
+            "/preferred node/bin", "/usr/bin", "/usr/local/bin", "/chosen bin",
+            "/opt/homebrew/bin", "/custom home/.local/bin", "/custom home/.npm-global/bin",
+            "/bin", "/usr/sbin", "/sbin",
+        ])
+        #expect(environment.filter { $0.key != "PATH" } == inherited.filter { $0.key != "PATH" })
+    }
+
+    @Test func childEnvironmentProvidesSystemToolsWhenPathIsMissing() {
+        let environment = CodexClient.subprocessEnvironment(
+            executable: URL(fileURLWithPath: "/usr/local/bin/codex"),
+            inherited: [:],
+            homeDirectory: URL(fileURLWithPath: "/test-only/home")
+        )
+        #expect(environment == ["PATH": "/usr/local/bin:/opt/homebrew/bin:/test-only/home/.local/bin:/test-only/home/.npm-global/bin:/usr/bin:/bin:/usr/sbin:/sbin"])
+    }
+
     @Test func cancellingDuringInitializationPreservesOtherCallers() async throws {
         let server = try FixtureServer(mode: "slowInitialize")
         defer { server.remove() }
@@ -157,12 +216,27 @@ private struct FixtureServer {
     let directory: URL
     let executable: URL
 
-    init(mode: String) throws {
-        directory = FileManager.default.temporaryDirectory.appendingPathComponent("quota-bar-test-\(UUID().uuidString)")
+    init(mode: String, usesEnvInterpreter: Bool = false) throws {
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent("quota bar test \(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        executable = directory.appendingPathComponent("codex-fixture")
-        try Self.script.write(to: executable, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+        let scriptFile = directory.appendingPathComponent("codex-fixture")
+        var script = Self.script
+        if usesEnvInterpreter {
+            let bin = directory.appendingPathComponent("chosen bin")
+            try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+            let interpreter = bin.appendingPathComponent("quota-bar-fixture-python")
+            // /usr/bin/python3 is an xcode-select shim on some Macs and cannot be
+            // invoked through a differently named symlink. Give env a local wrapper.
+            try "#!/bin/sh\nexec /usr/bin/python3 \"$@\"\n".write(to: interpreter, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: interpreter.path)
+            executable = bin.appendingPathComponent("codex")
+            try FileManager.default.createSymbolicLink(at: executable, withDestinationURL: scriptFile)
+            script = script.replacingOccurrences(of: "#!/usr/bin/python3", with: "#!/usr/bin/env quota-bar-fixture-python")
+        } else {
+            executable = scriptFile
+        }
+        try script.write(to: scriptFile, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptFile.path)
         try setMode(mode)
     }
 
@@ -192,7 +266,7 @@ private struct FixtureServer {
     private static let script = #"""
     #!/usr/bin/python3
     import json, os, pathlib, sys, time
-    root = pathlib.Path(__file__).parent
+    root = pathlib.Path(__file__).resolve().parent
     initialized = False
     def respond(request, result=None, error=None):
         response = {"id": request["id"]}
@@ -206,6 +280,10 @@ private struct FixtureServer {
         method = request["method"]
         with (root / "methods").open("a") as log: log.write(method + "\n")
         mode = (root / "mode").read_text()
+        if mode == "minimalEnvironment":
+            assert os.environ["HOME"] == "/test-only/home with spaces"
+            assert os.environ["CODEX_HOME"] == "/test-only/custom codex home"
+            assert os.environ["OPENAI_API_KEY"] == "fixture-only-value"
         if method == "initialize":
             assert request["params"]["clientInfo"]["name"] == "macaiusage"
             if mode == "slowInitialize": time.sleep(0.25)
