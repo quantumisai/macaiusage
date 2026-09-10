@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 — 2026-09-10
+
+- Fix usage refresh and reconnect after restarting a Mac when Codex is installed through npm. QuotaBar now supplies interpreter search paths to its Codex subprocess instead of depending on a Terminal environment.
+- Preserve the existing Codex sign-in and app preferences when reconnecting.
+- Add regression coverage for starting, signing in, and reconnecting with the minimal macOS login environment.
+
 ## 1.0.0 — 2026-09-08
 
 First public release of QuotaBar.

@@ -49,6 +49,7 @@ public enum CodexClientError: LocalizedError, Sendable, Equatable {
 public final class CodexClient {
     private let executablePath: String?
     private let requestTimeout: Duration
+    private let environment: [String: String]
     private var process: Process?
     private var input: FileHandle?
     private var output: FileHandle?
@@ -66,12 +67,18 @@ public final class CodexClient {
     public init(executablePath: String? = nil) {
         self.executablePath = executablePath
         self.requestTimeout = .seconds(20)
+        self.environment = ProcessInfo.processInfo.environment
     }
 
     // A short deadline keeps transport-failure tests deterministic and fast.
-    init(executablePath: String, requestTimeout: Duration) {
+    init(
+        executablePath: String,
+        requestTimeout: Duration,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         self.executablePath = executablePath
         self.requestTimeout = requestTimeout
+        self.environment = environment
     }
 
     isolated deinit {
@@ -102,6 +109,29 @@ public final class CodexClient {
             .filter { $0.hasPrefix("/") }
             .map { "\($0)/codex" }
         return candidates.lazy.compactMap(executable).first
+    }
+
+    /// GUI apps started at login have a minimal PATH. npm's Codex launcher uses
+    /// `/usr/bin/env node`, so locating Codex alone does not locate its interpreter.
+    static func subprocessEnvironment(
+        executable: URL,
+        inherited: [String: String],
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [String: String] {
+        // Respect an existing interpreter preference, then search beside the chosen
+        // launcher. Keep that bin directory even when Codex itself is a symlink.
+        let candidates = (inherited["PATH"] ?? "").split(separator: ":").map(String.init) + [
+            executable.deletingLastPathComponent().path,
+            "/opt/homebrew/bin", "/usr/local/bin",
+            homeDirectory.appendingPathComponent(".local/bin").path,
+            homeDirectory.appendingPathComponent(".npm-global/bin").path,
+            "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+        ]
+        var seen = Set<String>()
+        let path = candidates.filter { $0.hasPrefix("/") && seen.insert($0).inserted }
+        var result = inherited
+        result["PATH"] = path.joined(separator: ":")
+        return result
     }
 
     public func fetchUsage() async throws -> UsageSnapshot {
@@ -186,6 +216,7 @@ public final class CodexClient {
         )
         child.executableURL = executable
         child.arguments = ["app-server", "--listen", "stdio://"]
+        child.environment = Self.subprocessEnvironment(executable: executable, inherited: environment)
         child.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         child.standardInput = stdinPipe
         child.standardOutput = stdoutPipe

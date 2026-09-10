@@ -22,15 +22,15 @@ See how much usage is left, hover to find out when it resets, and get back to wo
 ### 1. Check the requirements
 
 - **macOS 14 Sonoma or later**, on Apple Silicon or Intel.
-- **Codex CLI installed**, with support for `codex app-server`. QuotaBar 1.0.0 was tested with Codex CLI 0.135.0.
+- **Codex CLI installed**, with support for `codex app-server`. QuotaBar 1.0.1 was tested with Codex CLI 0.135.0.
 - **A ChatGPT account with Codex access**, signed in through Codex. A Pro account works; API-key billing is a different usage system.
 
-If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instructions](https://developers.openai.com/codex/cli), then return here. Prefer the standalone native CLI for use from Finder; npm installations also need Node available to the app. QuotaBar does not bundle the CLI. You do **not** need Xcode, Swift, or an API key to use the downloaded app.
+If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instructions](https://developers.openai.com/codex/cli), then return here. Standalone and npm installations are supported; npm installations also require Node to remain installed. QuotaBar supplies the standard Homebrew, npm, and selected executable directories to its Codex subprocess, so it can start from Finder or at login without opening Terminal. QuotaBar does not bundle the CLI. You do **not** need Xcode, Swift, or an API key to use the downloaded app.
 
 ### 2. Download and open QuotaBar
 
 1. Open the [latest release](https://github.com/quantumisai/macaiusage/releases/latest).
-2. Download **`QuotaBar-v1.0.0-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
+2. Download **`QuotaBar-v1.0.1-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
 3. Double-click the ZIP to extract **QuotaBar.app**.
 4. Move **QuotaBar.app** to **Applications**, or your personal **`~/Applications`** folder, before enabling launch at login.
 5. Open the app. Look for its percentage or gauge icon in the **top-right menu bar**. It does not create a Dock icon.
@@ -95,7 +95,8 @@ The app also refreshes after your Mac wakes up. It does not need to send an AI p
 | Problem | What to do |
 | --- | --- |
 | “Codex CLI was not found” | Install the CLI, then refresh. If it is installed in a custom location, run `command -v codex` in Terminal and paste that full path into **Settings → Advanced → Codex executable**, then click **Apply**. |
-| Codex works in Terminal but not QuotaBar | If installed with npm, Node may be missing from the GUI app’s PATH. Install the standalone native CLI from OpenAI’s instructions, or select its native executable in Advanced settings. |
+| Disconnected after restarting your Mac | Update to **1.0.1 or later**, then open QuotaBar and refresh. Version 1.0.0 could fail to locate Node when started at login; your Codex sign-in may still be valid. |
+| Codex works in Terminal but not QuotaBar | For a custom Node version-manager installation, set **Codex executable** to the full path returned by `command -v codex`, normally beside its Node executable. Alternatively, use the standalone native CLI from OpenAI’s instructions. |
 | Signed in, but no subscription usage | Make sure Codex is signed in with ChatGPT rather than an API key. Use **Connect ChatGPT** or **Reconnect ChatGPT**, or run `codex login`, then refresh. |
 | Only a weekly limit appears | That is what the service returned. Keep **Track → Lowest remaining** or choose **Weekly**. A missing session limit is shown as `—`. |
 | Refresh fails or times out | Check your internet connection and try refreshing. If it persists, update Codex and sign in again. Last known values are marked as stale. |
@@ -107,7 +108,7 @@ If something still fails, [open an issue](https://github.com/quantumisai/macaius
 
 ## Update or uninstall
 
-**Update:** choose **Quit** in QuotaBar, download the next release, and replace the app in the same Applications folder. Open the replacement. Display preferences are retained. There is no automatic updater in 1.0.0.
+**Update:** choose **Quit** in QuotaBar, download the next release, and replace the app in the same Applications folder. Open the replacement. Display preferences are retained. There is no automatic updater.
 
 **Uninstall:** turn off **Launch QuotaBar at login**, quit the app, then move QuotaBar.app to the Trash. This does not sign you out of Codex or remove Codex itself.
 
