@@ -26,6 +26,7 @@ final class AppModel {
 
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored private var client: CodexClient
+    @ObservationIgnored private var authMonitor: CodexAuthMonitor
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var signInTask: Task<Void, Never>?
     @ObservationIgnored private var timer: Timer?
@@ -35,18 +36,19 @@ final class AppModel {
     @ObservationIgnored private let isDemo: Bool
     private static let preferencesKey = "QuotaBar.preferences.v1"
 
-    init(demo: Bool = false) {
+    init(demo: Bool = false, client: CodexClient? = nil, authMonitor: CodexAuthMonitor = CodexAuthMonitor()) {
         var saved = UserDefaults.standard.data(forKey: Self.preferencesKey)
             .flatMap { try? JSONDecoder().decode(UsagePreferences.self, from: $0) } ?? UsagePreferences()
         saved.normalize()
         preferences = saved
-        client = CodexClient(executablePath: saved.executablePath.isEmpty ? nil : saved.executablePath)
+        self.client = client ?? CodexClient(executablePath: saved.executablePath.isEmpty ? nil : saved.executablePath)
+        self.authMonitor = authMonitor
         isDemo = demo
         if demo {
             snapshot = UsageSnapshot(planName: "Pro · Demo", windows: [
                 UsageWindow(id: "primary", title: "Session", usedPercent: 28, durationMinutes: 300, resetsAt: Date().addingTimeInterval(7_620)),
                 UsageWindow(id: "secondary", title: "Weekly", usedPercent: 49, durationMinutes: 10_080, resetsAt: Date().addingTimeInterval(342_000))
-            ], fetchedAt: Date())
+            ], fetchedAt: Date(), accountEmail: "demo@example.com")
         }
     }
 
@@ -63,7 +65,7 @@ final class AppModel {
     var selectedWindow: UsageWindow? { preferences.trackedWindow.select(from: snapshot) }
 
     func start() {
-        timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.tick() }
         }
         refresh()
@@ -71,6 +73,7 @@ final class AppModel {
 
     func tick() {
         now = Date()
+        if discardChangedAccount() { refresh() }
         let resetCrossed = snapshot?.windows.contains { window in
             guard let reset = window.resetsAt else { return false }
             return reset <= now && reset > lastAttemptAt
@@ -80,19 +83,25 @@ final class AppModel {
     }
 
     func refresh() {
-        guard !isRefreshing, !isSigningIn, !isDemo else { return }
+        guard !isSigningIn, !isDemo else { return }
+        _ = discardChangedAccount()
+        guard !isRefreshing else { return }
         isRefreshing = true
+        let generation = operationGeneration
         lastAttemptAt = Date()
         onChange?()
         refreshTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await client.fetchUsage()
-                guard !Task.isCancelled else { return }
+                // A fresh process also picks up sign-ins kept in the macOS Keychain.
+                let result = try await client.fetchUsage(reloadAccount: true)
+                guard !Task.isCancelled, generation == operationGeneration else { return }
+                if discardChangedAccount() { refresh(); return }
                 snapshot = result
                 errorMessage = nil
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, generation == operationGeneration else { return }
+                if discardChangedAccount() { refresh(); return }
                 if let connectionError = error as? CodexClientError,
                    connectionError == .signInRequired || connectionError == .unsupportedAccount {
                     snapshot = nil
@@ -104,6 +113,20 @@ final class AppModel {
             isRefreshing = false
             onChange?()
         }
+    }
+
+    /// Changes to the shared local sign-in invalidate both displayed and in-flight usage.
+    /// Leave the connection alive during our own browser login so its callback can finish.
+    @discardableResult
+    private func discardChangedAccount() -> Bool {
+        guard !isDemo, !isSigningIn, authMonitor.consumeChange() else { return false }
+        operationGeneration += 1
+        refreshTask?.cancel()
+        client.stop()
+        isRefreshing = false
+        snapshot = nil
+        errorMessage = nil
+        return true
     }
 
     func signIn() {
@@ -128,20 +151,19 @@ final class AppModel {
                     errorMessage = "Couldn’t open the sign-in page. Check your default browser and try again."
                     return
                 }
-                // The CLI owns the browser callback and credentials. Read only the resulting quota.
+                // Keep the callback server alive until this login attempt completes.
                 for _ in 0..<60 {
                     try await Task.sleep(for: .seconds(3))
-                    if let result = try? await client.fetchUsage() {
+                    if try client.isSignInComplete() {
                         guard !Task.isCancelled, generation == operationGeneration else { return }
-                        snapshot = result
-                        errorMessage = nil
-                        now = Date()
-                        nextRefreshAt = now.addingTimeInterval(Double(preferences.refreshMinutes * 60))
+                        isSigningIn = false
+                        refresh()
                         return
                     }
                     try Task.checkCancellation()
                 }
-                errorMessage = "Sign-in is still pending. Finish in your browser, then click Refresh."
+                client.stop()
+                errorMessage = "Sign-in timed out. Click Connect ChatGPT to open a new sign-in page."
             } catch {
                 if !Task.isCancelled, generation == operationGeneration { errorMessage = error.localizedDescription }
             }

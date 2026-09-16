@@ -8,6 +8,16 @@ struct PreferencesView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
+                    LabeledContent("Account", value: model.snapshot?.accountEmail
+                                   ?? (model.snapshot == nil ? "Waiting for Codex sign-in" : "Connected to Codex"))
+                        .textSelection(.enabled)
+                } header: {
+                    Text("Conductor / Codex")
+                } footer: {
+                    Text("Follows your shared local Codex sign-in. Switch accounts in Conductor or Codex; QuotaBar updates automatically.")
+                }
+
+                Section {
                     Picker("Display", selection: $model.preferences.menuDisplay) {
                         ForEach(MenuDisplay.allCases, id: \.self) { display in
                             Text(display.label).tag(display)
@@ -100,7 +110,7 @@ struct PreferencesView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
         }
-        .frame(width: 480, height: 680)
+        .frame(width: 480, height: 750)
     }
 
     private var warningThreshold: Binding<Double> {

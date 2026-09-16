@@ -5,6 +5,7 @@ public enum CodexClientError: LocalizedError, Sendable, Equatable {
     case executableNotFound
     case launchFailed
     case signInRequired
+    case signInFailed
     case unsupportedAccount
     case noUsageAvailable
     case timedOut
@@ -23,6 +24,8 @@ public enum CodexClientError: LocalizedError, Sendable, Equatable {
             "Codex could not start. Check the executable in Settings and try again."
         case .signInRequired:
             "Sign in with your ChatGPT account to see your Codex usage."
+        case .signInFailed:
+            "ChatGPT sign-in did not complete. Try connecting again."
         case .unsupportedAccount:
             "Codex is using an API key or another provider. Sign in with ChatGPT to see subscription usage."
         case .noUsageAvailable:
@@ -62,6 +65,7 @@ public final class CodexClient {
     private var pending: [Int: PendingRequest] = [:]
     private var nextID = 0
     private var receiveBuffer = Data()
+    private var signInState = SignInState.idle
     private static let maximumLineBytes = 1_048_576
 
     public init(executablePath: String? = nil) {
@@ -134,28 +138,50 @@ public final class CodexClient {
         return result
     }
 
-    public func fetchUsage() async throws -> UsageSnapshot {
+    /// Restarting reloads the persisted sign-in instead of using an account cached
+    /// by the app-server. Leave this false while a browser sign-in is in progress.
+    public func fetchUsage(reloadAccount: Bool = false) async throws -> UsageSnapshot {
+        try Task.checkCancellation()
+        if reloadAccount { stop() }
         try await ensureRunning()
         let accountData = try await request("account/read", params: ["refreshToken": false])
         let account: AccountResponse = try decode(accountData)
         guard let identity = account.account else { throw CodexClientError.signInRequired }
         guard identity.type == "chatgpt" else { throw CodexClientError.unsupportedAccount }
         let limitsData = try await request("account/rateLimits/read", params: [:])
-        return try Self.snapshot(from: limitsData, accountPlan: identity.planType, fetchedAt: Date())
+        return try Self.snapshot(
+            from: limitsData,
+            accountPlan: identity.planType,
+            fetchedAt: Date(),
+            accountEmail: identity.email
+        )
     }
 
     /// Starts browser sign-in only in response to an explicit user action.
     public func startSignIn() async throws -> URL {
+        signInState = .idle
         try await ensureRunning()
         let data = try await request("account/login/start", params: ["type": "chatgpt"])
         let response: LoginResponse = try decode(data)
-        guard response.type == "chatgpt", let url = URL(string: response.authUrl),
+        guard response.type == "chatgpt", !response.loginId.isEmpty,
+              let url = URL(string: response.authUrl),
               url.scheme == "https", let host = url.host?.lowercased(),
               host == "openai.com" || host.hasSuffix(".openai.com")
                 || host == "chatgpt.com" || host.hasSuffix(".chatgpt.com") else {
+            signInState = .idle
             throw CodexClientError.invalidResponse
         }
         return url
+    }
+
+    /// Existing account data remains readable while a browser login is pending.
+    /// Only completion of this specific login attempt proves the new sign-in finished.
+    public func isSignInComplete() throws -> Bool {
+        switch signInState {
+        case .completed: true
+        case .failed: throw CodexClientError.signInFailed
+        case .idle, .starting, .pending: false
+        }
     }
 
     public func stop() {
@@ -279,6 +305,7 @@ public final class CodexClient {
         guard pending.count < 32 else { throw CodexClientError.tooManyRequests }
         nextID += 1
         let id = nextID
+        if method == "account/login/start" { signInState = .starting(requestID: id) }
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else {
@@ -321,18 +348,42 @@ public final class CodexClient {
                 response = object
             } catch { throw CodexClientError.invalidResponse }
             receiveBuffer.removeSubrange(...newline)
-            // Server notifications (including login completion) carry no request ID.
-            guard let id = response["id"] as? Int, pending[id] != nil else { continue }
+            // Server notifications carry no request ID. Never expose their error text,
+            // which can include private account or authentication details.
+            guard let id = response["id"] as? Int else {
+                receiveSignInNotification(response)
+                continue
+            }
+            guard pending[id] != nil else { continue }
             if let error = response["error"] as? [String: Any] {
                 complete(id, result: .failure(CodexClientError.serverError(error["code"] as? Int ?? -1)))
             } else if let result = response["result"] {
                 let body = try JSONSerialization.data(withJSONObject: result, options: .fragmentsAllowed)
+                if case .starting(let requestID) = signInState, requestID == id {
+                    // Record the login ID before resuming the caller: the next line in
+                    // this same stdout chunk may already be its completion notification.
+                    if let login = try? JSONDecoder().decode(LoginResponse.self, from: body),
+                       login.type == "chatgpt", !login.loginId.isEmpty {
+                        signInState = .pending(loginID: login.loginId)
+                    } else {
+                        signInState = .idle
+                    }
+                }
                 complete(id, result: .success(body))
             } else {
                 complete(id, result: .failure(CodexClientError.invalidResponse))
             }
         }
         guard receiveBuffer.count <= Self.maximumLineBytes else { throw CodexClientError.responseTooLarge }
+    }
+
+    private func receiveSignInNotification(_ response: [String: Any]) {
+        guard case .pending(let loginID) = signInState,
+              response["method"] as? String == "account/login/completed",
+              let params = response["params"] as? [String: Any],
+              params["loginId"] as? String == loginID,
+              let succeeded = params["success"] as? Bool else { return }
+        signInState = succeeded ? .completed : .failed
     }
 
     private func complete(_ id: Int, result: Result<Data, any Error>) {
@@ -342,6 +393,7 @@ public final class CodexClient {
     }
 
     private func shutDown(with error: any Error) {
+        signInState = .idle
         generation = nil
         isInitialized = false
         initializeTask?.cancel()
@@ -382,7 +434,12 @@ public final class CodexClient {
         catch { throw CodexClientError.invalidResponse }
     }
 
-    static func snapshot(from data: Data, accountPlan: String?, fetchedAt: Date) throws -> UsageSnapshot {
+    static func snapshot(
+        from data: Data,
+        accountPlan: String?,
+        fetchedAt: Date,
+        accountEmail: String? = nil
+    ) throws -> UsageSnapshot {
         let response: LimitsResponse
         do { response = try JSONDecoder().decode(LimitsResponse.self, from: data) }
         catch { throw CodexClientError.invalidResponse }
@@ -405,7 +462,8 @@ public final class CodexClient {
         return UsageSnapshot(
             planName: plan.map { $0.replacingOccurrences(of: "_", with: " ").capitalized },
             windows: windows,
-            fetchedAt: fetchedAt
+            fetchedAt: fetchedAt,
+            accountEmail: accountEmail
         )
     }
 
@@ -431,12 +489,22 @@ public final class CodexClient {
         struct Identity: Decodable {
             let type: String
             let planType: String?
+            let email: String?
         }
     }
 
     private struct LoginResponse: Decodable {
         let type: String
         let authUrl: String
+        let loginId: String
+    }
+
+    private enum SignInState {
+        case idle
+        case starting(requestID: Int)
+        case pending(loginID: String)
+        case completed
+        case failed
     }
 
     private struct LimitsResponse: Decodable {

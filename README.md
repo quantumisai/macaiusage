@@ -13,6 +13,7 @@ See how much usage is left, hover to find out when it resets, and get back to wo
 - Remaining or used percentage beside your other menu bar icons.
 - Reset countdowns and exact reset times in your local time zone.
 - Every window reported by the main Codex quota, such as session or weekly usage.
+- Automatic account following when you change the shared local Codex sign-in used by Conductor, with the account email shown in the panel and hover details.
 - Configurable refresh frequency, display style, warning color, and launch at login.
 
 **This tracks Codex subscription usage, not all ChatGPT model/message limits or OpenAI API spending.** Available windows depend on the account: a weekly limit can appear without a separate session limit. QuotaBar never invents a missing allowance.
@@ -22,7 +23,7 @@ See how much usage is left, hover to find out when it resets, and get back to wo
 ### 1. Check the requirements
 
 - **macOS 14 Sonoma or later**, on Apple Silicon or Intel.
-- **Codex CLI installed**, with support for `codex app-server`. QuotaBar 1.0.1 was tested with Codex CLI 0.135.0.
+- **Codex CLI installed**, with support for `codex app-server`. QuotaBar 1.1.0 was tested with Codex CLI 0.135.0.
 - **A ChatGPT account with Codex access**, signed in through Codex. A Pro account works; API-key billing is a different usage system.
 
 If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instructions](https://developers.openai.com/codex/cli), then return here. Standalone and npm installations are supported; npm installations also require Node to remain installed. QuotaBar supplies the standard Homebrew, npm, and selected executable directories to its Codex subprocess, so it can start from Finder or at login without opening Terminal. QuotaBar does not bundle the CLI. You do **not** need Xcode, Swift, or an API key to use the downloaded app.
@@ -30,7 +31,7 @@ If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instruct
 ### 2. Download and open QuotaBar
 
 1. Open the [latest release](https://github.com/quantumisai/macaiusage/releases/latest).
-2. Download **`QuotaBar-v1.0.1-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
+2. Download **`QuotaBar-v1.1.0-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
 3. Double-click the ZIP to extract **QuotaBar.app**.
 4. Move **QuotaBar.app** to **Applications**, or your personal **`~/Applications`** folder, before enabling launch at login.
 5. Open the app. Look for its percentage or gauge icon in the **top-right menu bar**. It does not create a Dock icon.
@@ -58,6 +59,14 @@ codex login
 ```
 
 Choose your **ChatGPT account**, rather than an API key. Sign-in is shared with the local Codex CLI; connecting a different account also changes the account that CLI uses.
+
+### Using two accounts with Conductor
+
+QuotaBar automatically follows the **shared local Codex sign-in** used by Conductor. Sign in to your other account in Conductor or Codex, then look at the email in QuotaBar’s panel or **Settings → Conductor / Codex** to confirm which account the allowance belongs to. You do not need to connect each account separately in QuotaBar.
+
+Changes to the local sign-in are checked every five seconds, independently of the usage refresh interval. QuotaBar clears the previous account’s numbers while fetching the new allowance. Every scheduled or manual refresh also opens a fresh Codex connection, so accounts stored in the macOS Keychain are picked up at the next refresh. Click the refresh arrow to check immediately.
+
+This follows the saved account in the same Codex home, normally `~/.codex`; it does not select an account based on the focused Conductor workspace. Existing agent sessions may retain their previous sign-in until reconnected. Separate per-workspace `CODEX_HOME` profiles and Conductor cloud credentials are not automatically discovered. If QuotaBar is launched with `CODEX_HOME`, it uses that home for both Codex and account-change detection.
 
 ## Use it
 
@@ -98,6 +107,7 @@ The app also refreshes after your Mac wakes up. It does not need to send an AI p
 | Disconnected after restarting your Mac | Update to **1.0.1 or later**, then open QuotaBar and refresh. Version 1.0.0 could fail to locate Node when started at login; your Codex sign-in may still be valid. |
 | Codex works in Terminal but not QuotaBar | For a custom Node version-manager installation, set **Codex executable** to the full path returned by `command -v codex`, normally beside its Node executable. Alternatively, use the standalone native CLI from OpenAI’s instructions. |
 | Signed in, but no subscription usage | Make sure Codex is signed in with ChatGPT rather than an API key. Use **Connect ChatGPT** or **Reconnect ChatGPT**, or run `codex login`, then refresh. |
+| Usage belongs to my other account | Check the email in QuotaBar, finish changing the shared local Codex sign-in in Conductor, then click Refresh. QuotaBar 1.1.0 or later follows account changes automatically. Separate Codex homes do not share a sign-in. |
 | Only a weekly limit appears | That is what the service returned. Keep **Track → Lowest remaining** or choose **Weekly**. A missing session limit is shown as `—`. |
 | Refresh fails or times out | Check your internet connection and try refreshing. If it persists, update Codex and sign in again. Last known values are marked as stale. |
 | No app window or Dock icon | QuotaBar lives in the menu bar. If your menu bar is crowded, close other menu bar apps or use a screen with more room. |
@@ -116,7 +126,7 @@ If something still fails, [open an issue](https://github.com/quantumisai/macaius
 
 QuotaBar starts the installed Codex CLI’s [documented app-server interface](https://learn.chatgpt.com/docs/app-server) and communicates over local standard input/output. It reads `account/read` and `account/rateLimits/read`; choosing **Connect ChatGPT** starts the CLI’s browser login flow. The CLI handles authentication and the request to OpenAI.
 
-QuotaBar does not directly read, copy, or store token files, passwords, API keys, or your account email. It has no analytics SDK or separate backend. Usage stays in memory; display preferences are saved in macOS user defaults. It does not create conversations or send model prompts to refresh usage. The Codex CLI continues to use its own configuration and data handling.
+QuotaBar does not read or copy the contents of token files, passwords, or API keys. It checks only file metadata for `auth.json` and `config.toml` to notice changes to the shared sign-in. The account email returned by Codex is displayed to distinguish accounts; email and usage stay in memory and are not saved or logged by QuotaBar. It has no analytics SDK or separate backend. Display preferences are saved in macOS user defaults. It does not create conversations or send model prompts to refresh usage. The Codex CLI continues to use its own configuration and data handling.
 
 QuotaBar is an independent project, not affiliated with or endorsed by OpenAI.
 
@@ -141,6 +151,6 @@ This builds `dist/QuotaBar.app` for your Mac, signs it locally, and opens it. Ot
 
 The test script supplies Swift Testing framework paths when a Command Line Tools installation needs them; with full Xcode it runs `swift test` normally. It forwards arguments, such as `./scripts/test.sh --filter UsageModelsTests`.
 
-`Sources/UsageCore` contains quota models, formatting, and the Codex connection. `Sources/QuotaBar` contains AppKit menu bar integration and SwiftUI views. `Tests/UsageCoreTests` covers quota selection, reset boundaries, stale readings, and subprocess protocol/error handling. The icon is drawn by `scripts/generate-icon.swift`.
+`Sources/UsageCore` contains quota models, formatting, account-change detection, and the Codex connection. `Sources/QuotaBar` contains AppKit menu bar integration and SwiftUI views. Tests cover quota selection, reset boundaries, stale readings, subprocess protocol/error handling, and account switching during an active refresh. The icon is drawn by `scripts/generate-icon.swift`.
 
 Contributions are welcome through pull requests. Run `./scripts/test.sh` and `./scripts/build-app.sh` before submitting a change. Code is available under the [MIT license](LICENSE).
