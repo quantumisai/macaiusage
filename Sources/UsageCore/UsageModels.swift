@@ -25,11 +25,13 @@ public struct UsageSnapshot: Sendable, Equatable {
     public let planName: String?
     public let windows: [UsageWindow]
     public let fetchedAt: Date
+    public let accountEmail: String?
 
-    public init(planName: String?, windows: [UsageWindow], fetchedAt: Date) {
+    public init(planName: String?, windows: [UsageWindow], fetchedAt: Date, accountEmail: String? = nil) {
         self.planName = planName
         self.windows = windows
         self.fetchedAt = fetchedAt
+        self.accountEmail = accountEmail
     }
 }
 
@@ -141,6 +143,7 @@ public enum UsageFormatting {
     public static func tooltip(snapshot: UsageSnapshot?, preferences: UsagePreferences, now: Date, isStale: Bool) -> String {
         guard let snapshot else { return "QuotaBar · Connect your ChatGPT account to see Codex usage" }
         let header = "QuotaBar · Codex\(snapshot.planName.map { " · \($0.capitalized)" } ?? "")"
+            + (snapshot.accountEmail.map { "\n\($0)" } ?? "")
         let rows = snapshot.windows.map { window in
             let amount = window.awaitsResetConfirmation(at: now) ? "Awaiting updated usage" : "\(percent(window.remainingPercent)) remaining"
             return "\(window.title): \(amount)\n\(reset(window.resetsAt, style: preferences.resetDisplay, now: now))"

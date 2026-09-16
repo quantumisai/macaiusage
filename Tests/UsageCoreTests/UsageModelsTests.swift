@@ -134,6 +134,15 @@ struct UsageModelsTests {
         #expect(tooltip.contains("Last known usage · update needed"))
     }
 
+    @Test(arguments: [nil, "fixture@example.invalid"] as [String?])
+    func tooltipIdentifiesTheAccountWhenAvailable(email: String?) {
+        let data = UsageSnapshot(planName: "pro", windows: [window()], fetchedAt: now, accountEmail: email)
+        let tooltip = UsageFormatting.tooltip(snapshot: data, preferences: UsagePreferences(), now: now, isStale: false)
+        let expectedHeader = "QuotaBar · Codex · Pro" + (email.map { "\n\($0)" } ?? "")
+        #expect(tooltip.hasPrefix(expectedHeader + "\n\nTest window:"))
+        #expect(data.accountEmail == email)
+    }
+
     @Test
     func elapsedResetDoesNotPresentOldPercentageAsCurrentInTooltip() {
         let preferences = UsagePreferences()

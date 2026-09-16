@@ -90,6 +90,15 @@ struct PopoverView: View {
             Text("Codex usage from your ChatGPT subscription")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+
+            if let email = model.snapshot?.accountEmail {
+                Label(email, systemImage: "person.crop.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help("Following your local Conductor / Codex sign-in: \(email)")
+            }
         }
     }
 
@@ -175,7 +184,7 @@ struct PopoverView: View {
                 Text(model.isRefreshing ? "Checking your usage…" : "Your usage, at a glance")
                     .font(.system(size: 16, weight: .semibold))
                 Text(model.executableAvailable
-                     ? "Connect your ChatGPT account to see your remaining Codex allowance and reset times."
+                     ? "Sign in to Codex in Conductor, or connect here. QuotaBar follows your local Codex account automatically."
                      : "Install Codex, then connect your ChatGPT account to see your allowance here.")
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)

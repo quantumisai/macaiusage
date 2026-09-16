@@ -16,6 +16,7 @@ struct CodexClientTests {
 
         for snapshot in snapshots {
             #expect(snapshot.planName == "Pro")
+            #expect(snapshot.accountEmail == "fixture@example.invalid")
             #expect(snapshot.windows.count == 1)
             let window = try #require(snapshot.windows.first)
             #expect(window.id == "primary")
@@ -46,7 +47,8 @@ struct CodexClientTests {
     @Test func timesOutAndCanStartANewConnection() async throws {
         let server = try FixtureServer(mode: "timeout")
         defer { server.remove() }
-        let client = CodexClient(executablePath: server.executable.path, requestTimeout: .milliseconds(500))
+        // Leave room for interpreter startup when transport tests launch in parallel.
+        let client = CodexClient(executablePath: server.executable.path, requestTimeout: .seconds(2))
         defer { client.stop() }
         await #expect(throws: CodexClientError.timedOut) { try await client.fetchUsage() }
         try server.setMode("success")
@@ -106,6 +108,48 @@ struct CodexClientTests {
         let url = try await client.startSignIn()
         #expect(url.absoluteString == "https://auth.openai.com/test-only")
         #expect(try server.methods() == ["initialize", "initialized", "account/login/start"])
+    }
+
+    @Test func reloadsAccountIdentityAndUsageTogetherAfterAccountSwitchAndLogout() async throws {
+        let server = try FixtureServer(mode: "accountSnapshot")
+        defer { server.remove() }
+        let client = CodexClient(executablePath: server.executable.path)
+        defer { client.stop() }
+
+        let original = try await client.fetchUsage()
+        #expect(original.accountEmail == "first@example.invalid")
+        #expect(original.windows.first?.usedPercent == 12)
+
+        try server.setAccount(email: "second@example.invalid", usedPercent: 68)
+        let cached = try await client.fetchUsage(reloadAccount: false)
+        #expect(cached.accountEmail == original.accountEmail)
+        #expect(cached.windows == original.windows)
+        #expect(try server.methods().filter { $0 == "initialize" }.count == 1)
+
+        let switched = try await client.fetchUsage(reloadAccount: true)
+        #expect(switched.accountEmail == "second@example.invalid")
+        #expect(switched.windows.first?.usedPercent == 68)
+        #expect(try server.methods().filter { $0 == "initialize" }.count == 2)
+
+        try server.setAccount(email: nil, usedPercent: 0)
+        await #expect(throws: CodexClientError.signInRequired) {
+            try await client.fetchUsage(reloadAccount: true)
+        }
+        let methods = try server.methods()
+        #expect(methods.filter { $0 == "initialize" }.count == 3)
+        #expect(methods.filter { $0 == "account/rateLimits/read" }.count == 3)
+        #expect(!methods.contains("account/login/start"))
+    }
+
+    @Test func pollingDuringBrowserSignInKeepsTheLoginProcessAlive() async throws {
+        let server = try FixtureServer(mode: "success")
+        defer { server.remove() }
+        let client = CodexClient(executablePath: server.executable.path)
+        defer { client.stop() }
+
+        _ = try await client.startSignIn()
+        _ = try await client.fetchUsage(reloadAccount: false)
+        #expect(try server.methods().filter { $0 == "initialize" }.count == 1)
     }
 
     @Test(arguments: [false, true])
@@ -238,10 +282,18 @@ private struct FixtureServer {
         try script.write(to: scriptFile, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptFile.path)
         try setMode(mode)
+        if mode == "accountSnapshot" { try setAccount(email: "first@example.invalid", usedPercent: 12) }
     }
 
     func setMode(_ mode: String) throws {
         try mode.write(to: directory.appendingPathComponent("mode"), atomically: true, encoding: .utf8)
+    }
+
+    func setAccount(email: String?, usedPercent: Double) throws {
+        var account: [String: Any] = ["usedPercent": usedPercent]
+        if let email { account["email"] = email }
+        let data = try JSONSerialization.data(withJSONObject: account)
+        try data.write(to: directory.appendingPathComponent("fixture-account.json"), options: .atomic)
     }
 
     func methods() throws -> [String] {
@@ -268,6 +320,8 @@ private struct FixtureServer {
     import json, os, pathlib, sys, time
     root = pathlib.Path(__file__).resolve().parent
     initialized = False
+    account_file = root / "fixture-account.json"
+    account_at_launch = json.loads(account_file.read_text()) if account_file.exists() else None
     def respond(request, result=None, error=None):
         response = {"id": request["id"]}
         response["error" if error else "result"] = error or result
@@ -301,11 +355,15 @@ private struct FixtureServer {
                 sys.stdout.write("x" * 1200000); sys.stdout.flush(); continue
             if mode == "remoteError":
                 respond(request, error={"code":-32001,"message":"private details must not be displayed"}); continue
-            account = None if mode == "signedOut" else {"type":"apiKey"} if mode == "apiKey" else {"type":"chatgpt", "planType":"pro", "email":"not-retained@example.invalid"}
+            account = None if mode == "signedOut" else {"type":"apiKey"} if mode == "apiKey" else {"type":"chatgpt", "planType":"pro", "email":"fixture@example.invalid"}
+            if mode == "accountSnapshot":
+                email = account_at_launch.get("email")
+                account = {"type":"chatgpt", "planType":"pro", "email":email} if email else None
             respond(request, {"account":account,"requiresOpenaiAuth":True})
         elif method == "account/rateLimits/read":
             sys.stdout.write('{"method":"account/rateLimits/updated","params":{}}\n'); sys.stdout.flush()
             main = {"primary":{"usedPercent":49,"windowDurationMins":10080,"resetsAt":1789440455},"secondary":None,"planType":"pro"}
+            if mode == "accountSnapshot": main["primary"]["usedPercent"] = account_at_launch["usedPercent"]
             other = {"primary":{"usedPercent":99,"windowDurationMins":300}}
             respond(request, {"rateLimits":other,"rateLimitsByLimitId":{"codex":main,"other":other}})
         elif method == "account/login/start":

@@ -14,6 +14,7 @@ let package = Package(
             .defaultIsolation(MainActor.self),
             .enableUpcomingFeature("NonisolatedNonsendingByDefault")
         ]),
-        .testTarget(name: "UsageCoreTests", dependencies: ["UsageCore"])
+        .testTarget(name: "UsageCoreTests", dependencies: ["UsageCore"]),
+        .testTarget(name: "QuotaBarTests", dependencies: ["QuotaBar", "UsageCore"])
     ]
 )

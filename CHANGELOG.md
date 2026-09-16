@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 — 2026-09-16
+
+- Follow changes to the shared local Codex sign-in used by Conductor, checking every five seconds without opening credential files.
+- Reload the saved account on every usage refresh, including sign-ins stored in the macOS Keychain.
+- Show the account email in the usage panel, hover details, and settings so two accounts are easy to distinguish.
+- Clear old usage on a detected account change and discard responses from the previous account if a switch happens during refresh.
+- Wait for the specific browser sign-in to finish before refreshing, so a cached account cannot prematurely end reconnection.
+- Document account switching, separate Codex homes, and in-memory handling of account email.
+
 ## 1.0.1 — 2026-09-10
 
 - Fix usage refresh and reconnect after restarting a Mac when Codex is installed through npm. QuotaBar now supplies interpreter search paths to its Codex subprocess instead of depending on a Terminal environment.
