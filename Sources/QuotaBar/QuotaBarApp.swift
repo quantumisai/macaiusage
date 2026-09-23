@@ -8,6 +8,12 @@ struct QuotaBarApp: App {
 
     var body: some Scene {
         Settings { PreferencesView(model: delegate.model) }
+            .commands {
+                CommandGroup(after: .appInfo) {
+                    Button("Show Usage", action: delegate.showUsage)
+                        .keyboardShortcut("u", modifiers: .command)
+                }
+            }
     }
 }
 
@@ -54,11 +60,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "QuotaBar")
         image?.isTemplate = true
         button.image = image
-        let title = UsageFormatting.menuTitle(snapshot: model.snapshot, preferences: model.preferences, now: model.now, isStale: model.isStale)
+        let codexTitle = UsageFormatting.menuTitle(snapshot: model.snapshot, preferences: model.preferences, now: model.now, isStale: model.isStale)
+        let anthropicTitle = UsageFormatting.menuTitle(snapshot: model.anthropicSnapshot, preferences: model.preferences, now: model.now, isStale: model.isAnthropicStale)
+        let title = model.showAnthropic && model.preferences.menuDisplay != .iconOnly
+            ? "O \(codexTitle)  A \(anthropicTitle)" : codexTitle
         button.title = title.isEmpty ? "" : " \(title)"
-        let low = (model.selectedWindow?.remainingPercent ?? 100) <= Double(model.preferences.warningThreshold)
-        button.contentTintColor = low && !model.isStale ? .systemOrange : nil
-        let tooltip = UsageFormatting.tooltip(snapshot: model.snapshot, preferences: model.preferences, now: model.now, isStale: model.isStale)
+        let low = (model.selectedWindow?.remainingPercent ?? 100) <= Double(model.preferences.warningThreshold) && !model.isStale
+        let anthropicLow = model.showAnthropic && !model.isAnthropicStale
+            && (model.preferences.trackedWindow.select(from: model.anthropicSnapshot)?.remainingPercent ?? 100) <= Double(model.preferences.warningThreshold)
+        button.contentTintColor = low || anthropicLow ? .systemOrange : nil
+        var tooltip = UsageFormatting.tooltip(snapshot: model.snapshot, preferences: model.preferences, now: model.now, isStale: model.isStale)
+        if model.showAnthropic {
+            tooltip += "\n\n" + UsageFormatting.tooltip(snapshot: model.anthropicSnapshot, preferences: model.preferences, now: model.now, isStale: model.isAnthropicStale, provider: "Anthropic / Claude")
+        }
         button.toolTip = model.preferences.showHoverDetails ? tooltip : nil
         button.setAccessibilityLabel(tooltip)
     }
@@ -74,6 +88,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             popover.contentViewController?.view.window?.makeKey()
         }
     }
+
+    func showUsage() { togglePopover() }
 
     private func showPreferences() {
         popover.performClose(nil)

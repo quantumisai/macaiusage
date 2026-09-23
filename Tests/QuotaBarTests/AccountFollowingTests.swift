@@ -79,7 +79,7 @@ private struct AccountFixture {
     }
 
     func makeModel() -> AppModel {
-        AppModel(client: CodexClient(executablePath: executable.path), authMonitor: CodexAuthMonitor(codexHome: directory))
+        AppModel(client: CodexClient(executablePath: executable.path), authMonitor: CodexAuthMonitor(codexHome: directory), anthropicEnabled: false)
     }
 
     func setAccount(_ name: String?) throws {

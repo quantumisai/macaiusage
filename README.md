@@ -2,28 +2,28 @@
 
 # QuotaBar
 
-**Your Codex allowance, right in your Mac’s menu bar.**
+**Your OpenAI and Anthropic allowances, right in your Mac’s menu bar.**
 
-See how much usage is left, hover to find out when it resets, and get back to work. QuotaBar is a native Mac app that uses your existing ChatGPT sign-in through Codex.
+See how much usage is left, hover to find out when it resets, and get back to work. QuotaBar is a native Mac app that uses your existing local sign-ins through Codex and Claude Code.
 
 [**Download the latest release**](https://github.com/quantumisai/macaiusage/releases/latest) · [Report a bug](https://github.com/quantumisai/macaiusage/issues) · [MIT license](LICENSE)
 
 ## What it shows
 
-- Remaining or used percentage beside your other menu bar icons.
+- Separate OpenAI (`O`) and Anthropic (`A`) remaining or used percentages beside your other menu bar icons.
 - Reset countdowns and exact reset times in your local time zone.
 - Every window reported by the main Codex quota, such as session or weekly usage.
 - Automatic account following when you change the shared local Codex sign-in used by Conductor, with the account email shown in the panel and hover details.
 - Configurable refresh frequency, display style, warning color, and launch at login.
 
-**This tracks Codex subscription usage, not all ChatGPT model/message limits or OpenAI API spending.** Available windows depend on the account: a weekly limit can appear without a separate session limit. QuotaBar never invents a missing allowance.
+**This tracks Codex and Claude subscription allowances, not API spending or every ChatGPT model/message limit.** Available windows depend on the account: a weekly limit can appear without a separate session limit. QuotaBar never invents a missing allowance.
 
 ## Install
 
 ### 1. Check the requirements
 
 - **macOS 14 Sonoma or later**, on Apple Silicon or Intel.
-- **Codex CLI installed**, with support for `codex app-server`. QuotaBar 1.1.0 was tested with Codex CLI 0.135.0.
+- **Codex CLI installed**, with support for `codex app-server`. Codex CLI 0.135.0 is supported.
 - **A ChatGPT account with Codex access**, signed in through Codex. A Pro account works; API-key billing is a different usage system.
 
 If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instructions](https://developers.openai.com/codex/cli), then return here. Standalone and npm installations are supported; npm installations also require Node to remain installed. QuotaBar supplies the standard Homebrew, npm, and selected executable directories to its Codex subprocess, so it can start from Finder or at login without opening Terminal. QuotaBar does not bundle the CLI. You do **not** need Xcode, Swift, or an API key to use the downloaded app.
@@ -31,7 +31,7 @@ If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instruct
 ### 2. Download and open QuotaBar
 
 1. Open the [latest release](https://github.com/quantumisai/macaiusage/releases/latest).
-2. Download **`QuotaBar-v1.1.0-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
+2. Download **`QuotaBar-v1.2.0-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
 3. Double-click the ZIP to extract **QuotaBar.app**.
 4. Move **QuotaBar.app** to **Applications**, or your personal **`~/Applications`** folder, before enabling launch at login.
 5. Open the app. Look for its percentage or gauge icon in the **top-right menu bar**. It does not create a Dock icon.
@@ -68,9 +68,21 @@ Changes to the local sign-in are checked every five seconds, independently of th
 
 This follows the saved account in the same Codex home, normally `~/.codex`; it does not select an account based on the focused Conductor workspace. Existing agent sessions may retain their previous sign-in until reconnected. Separate per-workspace `CODEX_HOME` profiles and Conductor cloud credentials are not automatically discovered. If QuotaBar is launched with `CODEX_HOME`, it uses that home for both Codex and account-change detection.
 
+### Add Anthropic / Claude usage
+
+Claude usage is enabled by default. Install **Claude Code 2.1.280 or later** and sign in with your Claude subscription (`claude auth login`), then click QuotaBar’s refresh arrow. If you already use a recent bundled Claude in Conductor, QuotaBar discovers it automatically. See [Claude Code setup](https://code.claude.com/docs/en/setup).
+
+The menu bar shows **`O 51%  A 84%`**, for example: OpenAI and Anthropic allowance remaining. Click it for separately labelled provider sections. Scroll down for Claude’s session, weekly, and any model-specific weekly limits. Hover to see both providers’ reset times. Claude accounts may report a zero-used window with no reset timestamp until that window starts; QuotaBar shows the percentage and says the reset time is unavailable.
+
+In **Settings → Anthropic / Claude**, disable **Show Anthropic usage** to return to the Codex-only display. Leave the executable blank to detect Conductor’s newest bundled Claude first, then `~/.local/bin`, Homebrew, npm, and PATH installations. Use the executable field and **Apply** to select a different installation.
+
+Claude refreshes independently on the configured interval and after wake. Each check starts a fresh Claude process to pick up its current local sign-in; use **Refresh** immediately after changing accounts. It inherits `CLAUDE_CONFIG_DIR` if QuotaBar was launched with one, but does not discover separate workspace profiles or cloud credentials. Opening the web dashboard uses your browser’s account, which may differ from Claude Code’s.
+
+The Claude integration uses the **experimental `get_usage` control request**, exposed by [Anthropic’s SDK](https://github.com/anthropics/claude-agent-sdk-typescript/releases/tag/v0.3.169). This interface may change; update Claude Code and QuotaBar if it stops working. API-key/provider sessions without subscription limits show unavailable, not 100% remaining.
+
 ## Use it
 
-**At a glance:** the menu bar shows the percentage remaining by default. QuotaBar follows the available window with the least allowance left.
+**At a glance:** the menu bar shows the percentage remaining by default. For each provider, QuotaBar follows the available window with the least allowance left, including any returned Claude model-specific weekly window.
 
 **Hover:** leave the pointer over the icon briefly to see the standard macOS tooltip with usage and reset details.
 
@@ -82,6 +94,8 @@ This follows the saved account in the same Codex home, normally `~/.codex`; it d
 | --- | --- |
 | Display | Percent remaining, percent used, session + weekly remaining, or icon only. When showing both, session is first and weekly is second. |
 | Track | Session, weekly, or lowest remaining. Applies to a single percentage display. |
+| Show Anthropic usage | Show or hide the separate `A` number and Claude section. Enabled by default. |
+| Claude executable | Automatic detection, or an absolute path to a current Claude Code executable; click **Apply**. |
 | Show usage details on hover | Enable or disable the menu bar tooltip. |
 | Reset time | Countdown, date and time, or both. Times use your Mac’s local time zone. |
 | Refresh every | 1, 2, 5, or 15 minutes. Default: 2 minutes. |
@@ -108,6 +122,7 @@ The app also refreshes after your Mac wakes up. It does not need to send an AI p
 | Codex works in Terminal but not QuotaBar | For a custom Node version-manager installation, set **Codex executable** to the full path returned by `command -v codex`, normally beside its Node executable. Alternatively, use the standalone native CLI from OpenAI’s instructions. |
 | Signed in, but no subscription usage | Make sure Codex is signed in with ChatGPT rather than an API key. Use **Connect ChatGPT** or **Reconnect ChatGPT**, or run `codex login`, then refresh. |
 | Usage belongs to my other account | Check the email in QuotaBar, finish changing the shared local Codex sign-in in Conductor, then click Refresh. QuotaBar 1.1.0 or later follows account changes automatically. Separate Codex homes do not share a sign-in. |
+| Claude number shows `—` | Open the panel for its error. Sign in with a subscription in Claude Code and refresh. Update to Claude Code 2.1.280 or later; API keys do not supply subscription allowances. |
 | Only a weekly limit appears | That is what the service returned. Keep **Track → Lowest remaining** or choose **Weekly**. A missing session limit is shown as `—`. |
 | Refresh fails or times out | Check your internet connection and try refreshing. If it persists, update Codex and sign in again. Last known values are marked as stale. |
 | No app window or Dock icon | QuotaBar lives in the menu bar. If your menu bar is crowded, close other menu bar apps or use a screen with more room. |
@@ -124,11 +139,13 @@ If something still fails, [open an issue](https://github.com/quantumisai/macaius
 
 ## How it works and privacy
 
-QuotaBar starts the installed Codex CLI’s [documented app-server interface](https://learn.chatgpt.com/docs/app-server) and communicates over local standard input/output. It reads `account/read` and `account/rateLimits/read`; choosing **Connect ChatGPT** starts the CLI’s browser login flow. The CLI handles authentication and the request to OpenAI.
+For OpenAI, QuotaBar starts the installed Codex CLI’s [documented app-server interface](https://learn.chatgpt.com/docs/app-server) and communicates over local standard input/output. It reads `account/read` and `account/rateLimits/read`; choosing **Connect ChatGPT** starts the CLI’s browser login flow. The CLI handles authentication and the request to OpenAI.
 
-QuotaBar does not read or copy the contents of token files, passwords, or API keys. It checks only file metadata for `auth.json` and `config.toml` to notice changes to the shared sign-in. The account email returned by Codex is displayed to distinguish accounts; email and usage stay in memory and are not saved or logged by QuotaBar. It has no analytics SDK or separate backend. Display preferences are saved in macOS user defaults. It does not create conversations or send model prompts to refresh usage. The Codex CLI continues to use its own configuration and data handling.
+For Anthropic, QuotaBar starts the installed Claude Code CLI in safe mode with tools, customizations, MCP servers, and session persistence disabled. It sends only initialization and usage control requests, asks Claude to skip transcript analysis, and ends the process after each check. Claude Code handles its own authentication and service request. QuotaBar does not extract Claude credentials or call authenticated Anthropic endpoints directly.
 
-QuotaBar is an independent project, not affiliated with or endorsed by OpenAI.
+QuotaBar does not read or copy the contents of token files, passwords, or API keys. It checks only file metadata for `auth.json` and `config.toml` to notice changes to the shared sign-in. The account email returned by Codex is displayed to distinguish accounts; email and usage stay in memory and are not saved or logged by QuotaBar. It has no analytics SDK or separate backend. Display preferences are saved in macOS user defaults. It does not create conversations or send model prompts to refresh usage. The CLIs retain their own authentication and service data handling.
+
+QuotaBar is an independent project, not affiliated with or endorsed by OpenAI or Anthropic.
 
 ## Build from source
 

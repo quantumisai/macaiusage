@@ -140,9 +140,9 @@ public enum UsageFormatting {
         return "\(percent(value))\(suffix)"
     }
 
-    public static func tooltip(snapshot: UsageSnapshot?, preferences: UsagePreferences, now: Date, isStale: Bool) -> String {
-        guard let snapshot else { return "QuotaBar · Connect your ChatGPT account to see Codex usage" }
-        let header = "QuotaBar · Codex\(snapshot.planName.map { " · \($0.capitalized)" } ?? "")"
+    public static func tooltip(snapshot: UsageSnapshot?, preferences: UsagePreferences, now: Date, isStale: Bool, provider: String = "Codex") -> String {
+        guard let snapshot else { return provider == "Codex" ? "QuotaBar · Connect your ChatGPT account to see Codex usage" : "QuotaBar · \(provider) · Usage unavailable. Open QuotaBar for details." }
+        let header = "QuotaBar · \(provider)\(snapshot.planName.map { " · \($0.capitalized)" } ?? "")"
             + (snapshot.accountEmail.map { "\n\($0)" } ?? "")
         let rows = snapshot.windows.map { window in
             let amount = window.awaitsResetConfirmation(at: now) ? "Awaiting updated usage" : "\(percent(window.remainingPercent)) remaining"

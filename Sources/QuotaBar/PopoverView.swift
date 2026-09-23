@@ -11,26 +11,42 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
 
-            if let snapshot = model.snapshot, !snapshot.windows.isEmpty {
-                VStack(spacing: 10) {
-                    ForEach(snapshot.windows) { window in
-                        usageCard(window)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    providerHeading("OpenAI · Codex", plan: model.snapshot?.planName)
+                    if let email = model.snapshot?.accountEmail {
+                        Text(email).font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle).help(email)
+                    }
+                    if let snapshot = model.snapshot, !snapshot.windows.isEmpty {
+                        VStack(spacing: 10) {
+                            ForEach(snapshot.windows) { window in
+                                usageCard(window)
+                            }
+                        }
+
+                        if model.isStale {
+                            notice("Showing last known usage. Refresh to update.", symbol: "clock.badge.exclamationmark")
+                        }
+                        if let error = model.errorMessage {
+                            notice(error, symbol: "exclamationmark.triangle")
+                            Button("Reconnect ChatGPT", action: model.signIn)
+                                .buttonStyle(.link)
+                                .disabled(model.isRefreshing || model.isSigningIn)
+                        }
+                        dashboardButton
+                    } else {
+                        connectionState
+                    }
+
+                    if model.showAnthropic {
+                        Divider().padding(.vertical, 4)
+                        anthropicSection
                     }
                 }
-
-                if model.isStale {
-                    notice("Showing last known usage. Refresh to update.", symbol: "clock.badge.exclamationmark")
-                }
-                if let error = model.errorMessage {
-                    notice(error, symbol: "exclamationmark.triangle")
-                    Button("Reconnect ChatGPT", action: model.signIn)
-                        .buttonStyle(.link)
-                        .disabled(model.isRefreshing || model.isSigningIn)
-                }
-                dashboardButton
-            } else {
-                connectionState
+                .padding(.trailing, 2)
             }
+            .frame(height: 520)
 
             Divider()
             footer
@@ -56,15 +72,6 @@ struct PopoverView: View {
                 Text("QuotaBar")
                     .font(.system(size: 16, weight: .semibold))
 
-                if let plan = model.snapshot?.planName, !plan.isEmpty {
-                    Text(plan.capitalized)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(accent)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(accent.opacity(0.10), in: Capsule())
-                }
-
                 Spacer(minLength: 0)
 
                 Button(action: model.refresh) {
@@ -72,7 +79,7 @@ struct PopoverView: View {
                         .frame(width: 23, height: 23)
                 }
                 .buttonStyle(.borderless)
-                .disabled(model.isRefreshing || model.isSigningIn)
+                .disabled(model.isRefreshing && model.isAnthropicRefreshing)
                 .help("Refresh usage")
                 .accessibilityLabel("Refresh usage")
                 .keyboardShortcut("r", modifiers: .command)
@@ -87,18 +94,41 @@ struct PopoverView: View {
                 .keyboardShortcut(",", modifiers: .command)
             }
 
-            Text("Codex usage from your ChatGPT subscription")
+            Text(model.showAnthropic ? "O = OpenAI · A = Anthropic" : "Codex usage from your ChatGPT subscription")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+        }
+    }
 
-            if let email = model.snapshot?.accountEmail {
-                Label(email, systemImage: "person.crop.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .help("Following your local Conductor / Codex sign-in: \(email)")
+    private func providerHeading(_ title: String, plan: String?) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13, weight: .semibold))
+            Spacer()
+            if let plan { Text(plan).font(.caption).foregroundStyle(.secondary) }
+        }
+    }
+
+    private var anthropicSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            providerHeading("Anthropic · Claude", plan: model.anthropicSnapshot?.planName)
+            if let snapshot = model.anthropicSnapshot {
+                ForEach(snapshot.windows) { usageCard($0) }
+                if model.isAnthropicStale {
+                    notice("Showing last known Claude usage. Refresh to update.", symbol: "clock.badge.exclamationmark")
+                }
+                Text(model.isAnthropicRefreshing ? "Refreshing Claude…" : freshnessText(snapshot.fetchedAt))
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            } else if model.isAnthropicRefreshing {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("Checking Claude usage…").font(.caption)
+                }
+            } else {
+                notice(model.anthropicError ?? "Sign in with your subscription in Claude Code, then refresh QuotaBar.", symbol: "info.circle")
+                Button("Refresh Claude", action: model.refreshAnthropic).buttonStyle(.link)
             }
+            Button("Open Claude usage dashboard", action: model.openAnthropicDashboard)
+                .buttonStyle(.link).font(.system(size: 12))
         }
     }
 
@@ -244,13 +274,13 @@ struct PopoverView: View {
         HStack(spacing: 6) {
             if model.isRefreshing {
                 ProgressView().controlSize(.mini)
-                Text("Refreshing…")
+                Text("Refreshing Codex…")
             } else if let snapshot = model.snapshot {
                 Circle()
                     .fill(model.isStale ? Color.orange : accent)
                     .frame(width: 5, height: 5)
                     .accessibilityHidden(true)
-                Text(freshnessText(snapshot.fetchedAt))
+                Text("Codex · " + freshnessText(snapshot.fetchedAt))
                     .help(snapshot.fetchedAt.formatted(date: .abbreviated, time: .standard))
             } else {
                 Text("Waiting for connection")
