@@ -5,6 +5,25 @@ import UsageCore
 
 @Observable
 final class AppModel {
+    var anthropicSnapshot: UsageSnapshot?
+    var anthropicError: String?
+    var isAnthropicRefreshing = false
+    var showAnthropic: Bool {
+        didSet {
+            UserDefaults.standard.set(showAnthropic, forKey: "QuotaBar.showAnthropic")
+            if showAnthropic { refreshAnthropic() }
+            else {
+                anthropicTask?.cancel()
+                claudeClient.stop()
+                claudeClient = ClaudeClient(executablePath: claudeExecutablePath)
+                isAnthropicRefreshing = false
+                anthropicSnapshot = nil
+                anthropicError = nil
+            }
+            onChange?()
+        }
+    }
+    var claudeExecutablePath: String
     var snapshot: UsageSnapshot?
     var isRefreshing = false
     var isSigningIn = false
@@ -18,6 +37,7 @@ final class AppModel {
                 UserDefaults.standard.set(data, forKey: Self.preferencesKey)
             }
             if oldValue.refreshMinutes != preferences.refreshMinutes {
+                nextAnthropicRefresh = Date().addingTimeInterval(Double(preferences.refreshMinutes * 60))
                 nextRefreshAt = Date().addingTimeInterval(Double(preferences.refreshMinutes * 60))
             }
             onChange?()
@@ -25,6 +45,10 @@ final class AppModel {
     }
 
     @ObservationIgnored var onChange: (() -> Void)?
+    @ObservationIgnored private var claudeClient: ClaudeClient
+    @ObservationIgnored private var anthropicTask: Task<Void, Never>?
+    @ObservationIgnored private var nextAnthropicRefresh = Date.distantPast
+    @ObservationIgnored private var anthropicLastAttempt = Date.distantPast
     @ObservationIgnored private var client: CodexClient
     @ObservationIgnored private var authMonitor: CodexAuthMonitor
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
@@ -36,15 +60,23 @@ final class AppModel {
     @ObservationIgnored private let isDemo: Bool
     private static let preferencesKey = "QuotaBar.preferences.v1"
 
-    init(demo: Bool = false, client: CodexClient? = nil, authMonitor: CodexAuthMonitor = CodexAuthMonitor()) {
+    init(demo: Bool = false, client: CodexClient? = nil, authMonitor: CodexAuthMonitor = CodexAuthMonitor(), claudeClient: ClaudeClient? = nil, anthropicEnabled: Bool? = nil) {
         var saved = UserDefaults.standard.data(forKey: Self.preferencesKey)
             .flatMap { try? JSONDecoder().decode(UsagePreferences.self, from: $0) } ?? UsagePreferences()
         saved.normalize()
+        showAnthropic = anthropicEnabled ?? (UserDefaults.standard.object(forKey: "QuotaBar.showAnthropic") as? Bool ?? true)
+        let savedClaudePath = UserDefaults.standard.string(forKey: "QuotaBar.claudeExecutablePath") ?? ""
+        claudeExecutablePath = savedClaudePath
+        self.claudeClient = claudeClient ?? ClaudeClient(executablePath: savedClaudePath)
         preferences = saved
         self.client = client ?? CodexClient(executablePath: saved.executablePath.isEmpty ? nil : saved.executablePath)
         self.authMonitor = authMonitor
         isDemo = demo
         if demo {
+            anthropicSnapshot = UsageSnapshot(planName: "Max · Demo", windows: [
+                UsageWindow(id: "session", title: "Session", usedPercent: 16, durationMinutes: 300, resetsAt: Date().addingTimeInterval(8_200)),
+                UsageWindow(id: "weekly", title: "Weekly", usedPercent: 34, durationMinutes: 10_080, resetsAt: Date().addingTimeInterval(220_000)),
+            ], fetchedAt: Date())
             snapshot = UsageSnapshot(planName: "Pro · Demo", windows: [
                 UsageWindow(id: "primary", title: "Session", usedPercent: 28, durationMinutes: 300, resetsAt: Date().addingTimeInterval(7_620)),
                 UsageWindow(id: "secondary", title: "Weekly", usedPercent: 49, durationMinutes: 10_080, resetsAt: Date().addingTimeInterval(342_000))
@@ -73,16 +105,26 @@ final class AppModel {
 
     func tick() {
         now = Date()
-        if discardChangedAccount() { refresh() }
+        if discardChangedAccount() { refreshCodex() }
         let resetCrossed = snapshot?.windows.contains { window in
             guard let reset = window.resetsAt else { return false }
             return reset <= now && reset > lastAttemptAt
         } ?? false
-        if now >= nextRefreshAt || resetCrossed { refresh() }
+        if now >= nextRefreshAt || resetCrossed { refreshCodex() }
+        let anthropicResetCrossed = anthropicSnapshot?.windows.contains {
+            guard let reset = $0.resetsAt else { return false }
+            return reset <= now && reset > anthropicLastAttempt
+        } ?? false
+        if now >= nextAnthropicRefresh || anthropicResetCrossed { refreshAnthropic() }
         onChange?()
     }
 
     func refresh() {
+        refreshAnthropic()
+        refreshCodex()
+    }
+
+    private func refreshCodex() {
         guard !isSigningIn, !isDemo else { return }
         _ = discardChangedAccount()
         guard !isRefreshing else { return }
@@ -96,12 +138,12 @@ final class AppModel {
                 // A fresh process also picks up sign-ins kept in the macOS Keychain.
                 let result = try await client.fetchUsage(reloadAccount: true)
                 guard !Task.isCancelled, generation == operationGeneration else { return }
-                if discardChangedAccount() { refresh(); return }
+                if discardChangedAccount() { refreshCodex(); return }
                 snapshot = result
                 errorMessage = nil
             } catch {
                 guard !Task.isCancelled, generation == operationGeneration else { return }
-                if discardChangedAccount() { refresh(); return }
+                if discardChangedAccount() { refreshCodex(); return }
                 if let connectionError = error as? CodexClientError,
                    connectionError == .signInRequired || connectionError == .unsupportedAccount {
                     snapshot = nil
@@ -185,6 +227,53 @@ final class AppModel {
         refresh()
     }
 
+    var isAnthropicStale: Bool {
+        guard let anthropicSnapshot else { return false }
+        return now.timeIntervalSince(anthropicSnapshot.fetchedAt) > Double(max(180, preferences.refreshMinutes * 120))
+            || anthropicSnapshot.windows.contains { $0.awaitsResetConfirmation(at: now) }
+    }
+
+    func refreshAnthropic() {
+        guard showAnthropic, !isAnthropicRefreshing, !isDemo else { return }
+        isAnthropicRefreshing = true
+        anthropicLastAttempt = Date()
+        onChange?()
+        anthropicTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await claudeClient.fetchUsage()
+                guard !Task.isCancelled, showAnthropic else { return }
+                anthropicSnapshot = result
+                anthropicError = nil
+            } catch {
+                guard !Task.isCancelled, showAnthropic else { return }
+                // A fresh CLI may represent a changed account; never retain another account's quota on failure.
+                anthropicSnapshot = nil
+                anthropicError = error.localizedDescription
+            }
+            now = Date()
+            nextAnthropicRefresh = now.addingTimeInterval(Double(preferences.refreshMinutes * 60))
+            isAnthropicRefreshing = false
+            onChange?()
+        }
+    }
+
+    func applyClaudeExecutablePath() {
+        anthropicTask?.cancel()
+        claudeClient.stop()
+        claudeExecutablePath = claudeExecutablePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        UserDefaults.standard.set(claudeExecutablePath, forKey: "QuotaBar.claudeExecutablePath")
+        claudeClient = ClaudeClient(executablePath: claudeExecutablePath)
+        anthropicSnapshot = nil
+        anthropicError = nil
+        isAnthropicRefreshing = false
+        refreshAnthropic()
+    }
+
+    func openAnthropicDashboard() {
+        if let url = URL(string: "https://claude.ai/settings/usage") { NSWorkspace.shared.open(url) }
+    }
+
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
             if enabled { try SMAppService.mainApp.register() }
@@ -213,6 +302,8 @@ final class AppModel {
 
     func stop() {
         operationGeneration += 1
+        anthropicTask?.cancel()
+        claudeClient.stop()
         timer?.invalidate()
         timer = nil
         refreshTask?.cancel()

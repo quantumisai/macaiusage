@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0 — 2026-09-23
+
+- Add Anthropic / Claude subscription usage beside Codex: `O` for OpenAI and `A` for Anthropic.
+- Show Claude session, weekly, model-specific weekly windows, and reset times returned by Claude Code.
+- Read usage through Claude Code’s experimental control interface using the existing local sign-in, with no model prompts or credential-file reads.
+- Refresh each provider independently and clear Claude readings if its account or connection becomes unavailable.
+- Add an Anthropic toggle and custom Claude executable path; automatically detect Conductor’s bundled Claude.
+
 ## 1.1.0 — 2026-09-16
 
 - Follow changes to the shared local Codex sign-in used by Conductor, checking every five seconds without opening credential files.

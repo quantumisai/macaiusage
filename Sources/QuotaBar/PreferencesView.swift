@@ -18,6 +18,24 @@ struct PreferencesView: View {
                 }
 
                 Section {
+                    Toggle("Show Anthropic usage", isOn: $model.showAnthropic)
+                    Text("Uses your local Claude Code subscription sign-in. Refresh checks for account changes. O = OpenAI, A = Anthropic.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        TextField("Automatic detection", text: $model.claudeExecutablePath)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Custom Claude executable path")
+                            .onSubmit(model.applyClaudeExecutablePath)
+                        Button("Apply", action: model.applyClaudeExecutablePath)
+                    }
+                    .disabled(!model.showAnthropic)
+                } header: {
+                    Text("Anthropic / Claude")
+                } footer: {
+                    Text("Automatic detection checks Conductor’s bundled Claude first, then standalone installations. Requires Claude Code 2.1.280 or later.")
+                }
+
+                Section {
                     Picker("Display", selection: $model.preferences.menuDisplay) {
                         ForEach(MenuDisplay.allCases, id: \.self) { display in
                             Text(display.label).tag(display)
@@ -100,7 +118,7 @@ struct PreferencesView: View {
 
             Divider()
             HStack {
-                Text("Codex usage from your ChatGPT subscription")
+                Text("OpenAI and Anthropic subscription usage")
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("Usage dashboard", action: model.openDashboard)
