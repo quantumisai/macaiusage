@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 — 2026-09-25
+
+- Use compact menu bar readings such as `O13% A0%`, removing the extra icon and spacing while keeping width stable at zero and 100%.
+- Use native menu bar foreground colors; keep warning colors inside the usage panel.
+- Prevent duplicate instances across app copies with a process-held lock that releases automatically on exit. Opening another copy shows the existing usage window.
+
 ## 1.2.1 — 2026-09-25
 
 - Keep menu bar width and icon dimensions stable as allowances reach zero, reset to 100%, become stale, or become unavailable.
