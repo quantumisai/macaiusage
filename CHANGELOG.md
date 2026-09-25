@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1 — 2026-09-25
+
+- Keep menu bar width and icon dimensions stable as allowances reach zero, reset to 100%, become stale, or become unavailable.
+- Reopening QuotaBar or choosing Show Usage opens a regular usage window, so the app remains accessible when macOS hides a crowded menu bar item.
+- Add regression coverage for zero, full, missing, and stale readings in each menu display mode.
+
 ## 1.2.0 — 2026-09-23
 
 - Add Anthropic / Claude subscription usage beside Codex: `O` for OpenAI and `A` for Anthropic.
