@@ -11,10 +11,12 @@ See how much usage is left, hover to find out when it resets, and get back to wo
 ## What it shows
 
 - Separate OpenAI (`O`) and Anthropic (`A`) remaining or used percentages beside your other menu bar icons.
+- Compact readings such as `O13% A0%`, with system menu bar colors and stable width. Full provider names and stale status appear on hover and in the panel.
+- One running instance per user, even if you open a second copy. Reopening shows the existing usage window.
 - Reset countdowns and exact reset times in your local time zone.
 - Every window reported by the main Codex quota, such as session or weekly usage.
 - Automatic account following when you change the shared local Codex sign-in used by Conductor, with the account email shown in the panel and hover details.
-- Configurable refresh frequency, display style, warning color, and launch at login.
+- Configurable refresh frequency, display style, panel warning threshold, and launch at login.
 
 **This tracks Codex and Claude subscription allowances, not API spending or every ChatGPT model/message limit.** Available windows depend on the account: a weekly limit can appear without a separate session limit. QuotaBar never invents a missing allowance.
 
@@ -31,7 +33,7 @@ If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instruct
 ### 2. Download and open QuotaBar
 
 1. Open the [latest release](https://github.com/quantumisai/macaiusage/releases/latest).
-2. Download **`QuotaBar-v1.2.1-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
+2. Download **`QuotaBar-v1.2.2-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
 3. Double-click the ZIP to extract **QuotaBar.app**.
 4. Move **QuotaBar.app** to **Applications**, or your personal **`~/Applications`** folder, before enabling launch at login.
 5. Open the app. Look for its percentage or gauge icon in the **top-right menu bar**. It does not create a Dock icon.
@@ -99,7 +101,7 @@ The Claude integration uses the **experimental `get_usage` control request**, ex
 | Show usage details on hover | Enable or disable the menu bar tooltip. |
 | Reset time | Countdown, date and time, or both. Times use your Mac’s local time zone. |
 | Refresh every | 1, 2, 5, or 15 minutes. Default: 2 minutes. |
-| Warn below | Turn the usage indicator orange when remaining allowance reaches the threshold. This changes color; it does not send notifications. |
+| Warn below | Turn usage indicators orange in the panel when remaining allowance reaches the threshold. The menu bar keeps its system color; no notifications are sent. |
 | Launch QuotaBar at login | Start in the menu bar when you sign in to your Mac. Disabled until you enable it. |
 | Codex executable | Leave blank for automatic detection, or enter a full executable path and click **Apply**. |
 

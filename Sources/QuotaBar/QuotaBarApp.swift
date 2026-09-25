@@ -23,9 +23,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let popover = NSPopover()
     private var preferencesWindow: NSWindow?
     private var usageWindow: NSWindow?
+    private var instanceLock: SingleInstanceLock?
+    private let reopenNotification = Notification.Name("com.senna.quotabar.showUsage")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        do {
+            let lockURL = FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support/QuotaBar/instance.lock")
+            instanceLock = try SingleInstanceLock.acquire(at: lockURL)
+            guard instanceLock != nil else {
+                DistributedNotificationCenter.default().postNotificationName(reopenNotification, object: nil, userInfo: nil, deliverImmediately: true)
+                NSApp.terminate(nil)
+                return
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = "QuotaBar couldn’t start"
+            alert.informativeText = "Couldn’t check whether QuotaBar is already running. \(error.localizedDescription)"
+            alert.runModal()
+            NSApp.terminate(nil)
+            return
+        }
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(reopenExistingInstance), name: reopenNotification, object: nil)
         installApplicationMenu()
         let item = NSStatusBar.system.statusItem(withLength: StatusItemLayout.length(
             display: model.preferences.menuDisplay, showAnthropic: model.showAnthropic
@@ -65,16 +85,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "QuotaBar")
         image?.isTemplate = true
         image?.size = StatusItemLayout.imageSize
-        button.image = image
+        button.image = model.preferences.menuDisplay == .iconOnly ? image : nil
         let codexTitle = UsageFormatting.menuTitle(snapshot: model.snapshot, preferences: model.preferences, now: model.now, isStale: model.isStale)
         let anthropicTitle = UsageFormatting.menuTitle(snapshot: model.anthropicSnapshot, preferences: model.preferences, now: model.now, isStale: model.isAnthropicStale)
-        let title = model.showAnthropic && model.preferences.menuDisplay != .iconOnly
-            ? "O \(codexTitle)  A \(anthropicTitle)" : codexTitle
-        button.title = title.isEmpty ? "" : " \(title)"
-        let low = (model.selectedWindow?.remainingPercent ?? 100) <= Double(model.preferences.warningThreshold) && !model.isStale
-        let anthropicLow = model.showAnthropic && !model.isAnthropicStale
-            && (model.preferences.trackedWindow.select(from: model.anthropicSnapshot)?.remainingPercent ?? 100) <= Double(model.preferences.warningThreshold)
-        button.contentTintColor = low || anthropicLow ? .systemOrange : nil
+        button.title = model.preferences.menuDisplay == .iconOnly ? "" : StatusItemLayout.title(
+            codex: codexTitle, anthropic: anthropicTitle, showAnthropic: model.showAnthropic
+        )
+        // Let the menu bar choose its contrasting foreground, including on dark wallpapers.
+        // Warning colors belong in the panel, not in the system status button.
+        button.contentTintColor = nil
         var tooltip = UsageFormatting.tooltip(snapshot: model.snapshot, preferences: model.preferences, now: model.now, isStale: model.isStale)
         if model.showAnthropic {
             tooltip += "\n\n" + UsageFormatting.tooltip(snapshot: model.anthropicSnapshot, preferences: model.preferences, now: model.now, isStale: model.isAnthropicStale, provider: "Anthropic / Claude")
@@ -119,6 +138,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return true
     }
 
+    @objc private func reopenExistingInstance() { showUsage() }
+
     private func showPreferences() {
         popover.performClose(nil)
         model.syncLoginStatus()
@@ -143,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+        DistributedNotificationCenter.default().removeObserver(self)
         model.stop()
     }
 
