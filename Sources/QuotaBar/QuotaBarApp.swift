@@ -22,17 +22,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var preferencesWindow: NSWindow?
+    private var usageWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installApplicationMenu()
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        let item = NSStatusBar.system.statusItem(withLength: StatusItemLayout.length(
+            display: model.preferences.menuDisplay, showAnthropic: model.showAnthropic
+        ))
         statusItem = item
         if let button = item.button {
             button.target = self
             button.action = #selector(togglePopover)
             button.imagePosition = .imageLeading
-            button.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+            button.font = StatusItemLayout.font
         }
         popover.behavior = .transient
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -47,18 +50,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if CommandLine.arguments.contains("--settings") {
             showPreferences()
         } else if CommandLine.arguments.contains("--show") {
-            togglePopover()
+            showUsage()
         }
     }
 
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
+        let length = StatusItemLayout.length(display: model.preferences.menuDisplay, showAnthropic: model.showAnthropic)
+        if statusItem?.length != length { statusItem?.length = length }
         let symbol: String
         if model.snapshot == nil { symbol = model.errorMessage == nil ? "gauge.with.dots.needle.50percent" : "exclamationmark.circle" }
         else if model.isStale { symbol = "clock.arrow.circlepath" }
         else { symbol = "chart.donut" }
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "QuotaBar")
         image?.isTemplate = true
+        image?.size = StatusItemLayout.imageSize
         button.image = image
         let codexTitle = UsageFormatting.menuTitle(snapshot: model.snapshot, preferences: model.preferences, now: model.now, isStale: model.isStale)
         let anthropicTitle = UsageFormatting.menuTitle(snapshot: model.anthropicSnapshot, preferences: model.preferences, now: model.now, isStale: model.isAnthropicStale)
@@ -89,7 +95,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
 
-    func showUsage() { togglePopover() }
+    /// A regular window remains reachable even when macOS overflows the menu item.
+    func showUsage() {
+        popover.performClose(nil)
+        if usageWindow == nil {
+            let controller = NSHostingController(rootView: PopoverView(model: model, openPreferences: { [weak self] in
+                self?.showPreferences()
+            }))
+            let window = NSWindow(contentViewController: controller)
+            window.title = "QuotaBar Usage"
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            usageWindow = window
+        }
+        model.tick()
+        NSApp.activate(ignoringOtherApps: true)
+        usageWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showUsage()
+        return true
+    }
 
     private func showPreferences() {
         popover.performClose(nil)
