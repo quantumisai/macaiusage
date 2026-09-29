@@ -47,9 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(reopenExistingInstance), name: reopenNotification, object: nil)
         installApplicationMenu()
-        let item = NSStatusBar.system.statusItem(withLength: StatusItemLayout.length(
-            display: model.preferences.menuDisplay, showAnthropic: model.showAnthropic
-        ))
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusBar.system.thickness)
         statusItem = item
         if let button = item.button {
             button.target = self
@@ -76,8 +74,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
-        let length = StatusItemLayout.length(display: model.preferences.menuDisplay, showAnthropic: model.showAnthropic)
-        if statusItem?.length != length { statusItem?.length = length }
         let symbol: String
         if model.snapshot == nil { symbol = model.errorMessage == nil ? "gauge.with.dots.needle.50percent" : "exclamationmark.circle" }
         else if model.isStale { symbol = "clock.arrow.circlepath" }
@@ -91,6 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.title = model.preferences.menuDisplay == .iconOnly ? "" : StatusItemLayout.title(
             codex: codexTitle, anthropic: anthropicTitle, showAnthropic: model.showAnthropic
         )
+        let length = StatusItemLayout.length(title: button.title, iconOnly: model.preferences.menuDisplay == .iconOnly)
+        if statusItem?.length != length { statusItem?.length = length }
         // Let the menu bar choose its contrasting foreground, including on dark wallpapers.
         // Warning colors belong in the panel, not in the system status button.
         button.contentTintColor = nil

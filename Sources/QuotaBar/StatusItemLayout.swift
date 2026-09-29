@@ -1,9 +1,8 @@
 import AppKit
 import UsageCore
 
-/// Reserve the complete range of readings once per display configuration.
-/// Live percentages, stale markers and error symbols must not resize the item:
-/// macOS can move the entire item into overflow when its allocation changes.
+/// Size to the current reading, with only two points of padding per side.
+/// Zero and unavailable readings still have a nonzero, clickable allocation.
 enum StatusItemLayout {
     static var font: NSFont { .monospacedDigitSystemFont(ofSize: 12, weight: .medium) }
     static let imageSize = NSSize(width: 14, height: 14)
@@ -14,12 +13,9 @@ enum StatusItemLayout {
         return showAnthropic ? "O\(compact(codex)) A\(compact(anthropic))" : compact(codex)
     }
 
-    static func length(display: MenuDisplay, showAnthropic: Bool) -> CGFloat {
-        guard display != .iconOnly else { return NSStatusBar.system.thickness }
-        let reading = display == .bothWindows ? "100%/100%" : "100%"
-        let widestTitle = title(codex: reading, anthropic: reading, showAnthropic: showAnthropic)
-        let textWidth = (widestTitle as NSString).size(withAttributes: [.font: font]).width
-        // Percentages identify the app; reserve an icon only in icon-only mode.
-        return ceil(textWidth) + 12
+    static func length(title: String, iconOnly: Bool) -> CGFloat {
+        guard !iconOnly else { return NSStatusBar.system.thickness }
+        let textWidth = (title as NSString).size(withAttributes: [.font: font]).width
+        return max(NSStatusBar.system.thickness, ceil(textWidth) + 4)
     }
 }
