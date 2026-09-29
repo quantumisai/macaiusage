@@ -11,7 +11,7 @@ See how much usage is left, hover to find out when it resets, and get back to wo
 ## What it shows
 
 - Separate OpenAI (`O`) and Anthropic (`A`) remaining or used percentages beside your other menu bar icons.
-- Compact readings such as `O13% A0%`, with system menu bar colors and stable width. Full provider names and stale status appear on hover and in the panel.
+- Compact readings such as `O13% A0%`, with system menu bar colors and two points of internal padding per side. Width follows the actual readings instead of reserving empty space for `100%`. Full provider names and stale status appear on hover and in the panel.
 - One running instance per user, even if you open a second copy. Reopening shows the existing usage window.
 - Reset countdowns and exact reset times in your local time zone.
 - Every window reported by the main Codex quota, such as session or weekly usage.
@@ -33,7 +33,7 @@ If you do not have Codex yet, follow [OpenAI’s Codex CLI installation instruct
 ### 2. Download and open QuotaBar
 
 1. Open the [latest release](https://github.com/quantumisai/macaiusage/releases/latest).
-2. Download **`QuotaBar-v1.2.2-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
+2. Download **`QuotaBar-v1.2.3-universal.zip`** from **Assets**. This one download contains Apple Silicon and Intel versions. GitHub’s “Source code” archives are for building the app yourself.
 3. Double-click the ZIP to extract **QuotaBar.app**.
 4. Move **QuotaBar.app** to **Applications**, or your personal **`~/Applications`** folder, before enabling launch at login.
 5. Open the app. Look for its percentage or gauge icon in the **top-right menu bar**. It does not create a Dock icon.
@@ -127,7 +127,7 @@ The app also refreshes after your Mac wakes up. It does not need to send an AI p
 | Claude number shows `—` | Open the panel for its error. Sign in with a subscription in Claude Code and refresh. Update to Claude Code 2.1.280 or later; API keys do not supply subscription allowances. |
 | Only a weekly limit appears | That is what the service returned. Keep **Track → Lowest remaining** or choose **Weekly**. A missing session limit is shown as `—`. |
 | Refresh fails or times out | Check your internet connection and try refreshing. If it persists, update Codex and sign in again. Last known values are marked as stale. |
-| The whole icon disappears, including at zero usage | Update to **1.2.1 or later**. Its width stays stable as readings change. macOS can still hide items when the menu bar is crowded; reopen QuotaBar from Applications or Spotlight to show its usage in a regular window. Choose **Icon only** in Settings if space is tight. |
+| The whole icon disappears, including at zero usage | Update to **1.2.3 or later** for tighter side padding and a width fitted to the current readings. Zero and unavailable readings retain a clickable item. macOS can still hide items when the menu bar is crowded or items extend behind the camera notch; reopen QuotaBar from Applications or Spotlight to show its usage in a regular window. Choose **Icon only** in Settings if space is tight. |
 | No Dock icon | QuotaBar normally lives in the menu bar. Reopening the app shows its usage window; closing that window keeps monitoring active. |
 | Launch at login needs approval | Keep the app in Applications, then allow QuotaBar in **System Settings → General → Login Items** if macOS requests approval. |
 | macOS blocks the download | Read the first-open notice above. The initial release is not notarized. |

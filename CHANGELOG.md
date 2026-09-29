@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 — 2026-09-29
+
+- Fit the menu bar item to its current text instead of reserving room for the widest possible percentages.
+- Reduce internal side padding to two points per side; retain a square minimum click target for zero, missing, and icon-only readings.
+- Replace fixed-width regression coverage with checks that all display modes fit without unnecessary reserved space.
+
 ## 1.2.2 — 2026-09-25
 
 - Use compact menu bar readings such as `O13% A0%`, removing the extra icon and spacing while keeping width stable at zero and 100%.
